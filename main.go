@@ -25,11 +25,11 @@ func main() {
 	ctx, stopNotify := signal.NotifyContext(context.Background(), signals...)
 	defer stopNotify()
 
-	localAddr := &net.TCPAddr{IP: getLocalAddress(), Port: port}
+	localAddr := &net.TCPAddr{Port: port}
 	listener := must(net.ListenTCP("tcp4", localAddr))
 	defer listener.Close()
 
-	log.Printf("Listening on http://%s/", listener.Addr())
+	printLocalAddress(listener.Addr().(*net.TCPAddr).Port)
 
 	server := http.Server{
 		BaseContext: func(ln net.Listener) context.Context {
@@ -47,7 +47,8 @@ func main() {
 	server.Shutdown(ctx)
 }
 
-func getLocalAddress() net.IP {
+func printLocalAddress(port int) {
+	log.Printf("Listening on:")
 	for _, iface := range must(net.Interfaces()) {
 		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
 			continue
@@ -64,11 +65,9 @@ func getLocalAddress() net.IP {
 				continue
 			}
 
-			return ip
+			log.Printf("\thttp://%s/", &net.TCPAddr{IP: ip, Port: port})
 		}
 	}
-
-	panic("no local address found")
 }
 
 func must[T any](val T, err error) T {
