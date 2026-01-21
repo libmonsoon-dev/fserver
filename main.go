@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -15,6 +16,8 @@ import (
 var (
 	port      int
 	directory string
+
+	requestId atomic.Uint64
 )
 
 func main() {
@@ -31,11 +34,14 @@ func main() {
 
 	printLocalAddress(listener.Addr().(*net.TCPAddr).Port)
 
+	handler := http.FileServer(http.Dir(directory))
+	handler = loggingMiddleware(handler)
+
 	server := http.Server{
 		BaseContext: func(ln net.Listener) context.Context {
 			return ctx
 		},
-		Handler: http.FileServer(http.Dir(directory)),
+		Handler: handler,
 	}
 	defer server.Close()
 
@@ -45,6 +51,15 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	server.Shutdown(ctx)
+}
+
+func loggingMiddleware(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reqId := requestId.Add(1)
+		log.Printf("[%d] %s %s %s", reqId, r.RemoteAddr, r.Method, r.URL.Path)
+		handler.ServeHTTP(w, r)
+		log.Printf("[%d] %s %s %s END", reqId, r.RemoteAddr, r.Method, r.URL.Path)
+	})
 }
 
 func printLocalAddress(port int) {
